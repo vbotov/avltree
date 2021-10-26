@@ -57,9 +57,23 @@ static void *avl_node2str(const t_avl_tree *t, t_avl_node *n)
 
 
 
+static void *avl_node2key(const t_avl_tree *t, t_avl_node *n)
+{
+   return n == NULL ? NULL : (void *)(((char *)n) - t->node_offset + t->key_offset);
+}
+
+
+
 static t_avl_node *avl_str2node(const t_avl_tree *t, void *d)
 {
    return d == NULL ? NULL : (t_avl_node *)(((char *)d) + t->node_offset);
+}
+
+
+
+static t_avl_node *avl_str2key(const t_avl_tree *t, void *d)
+{
+   return d == NULL ? NULL : (t_avl_node *)(((char *)d) + t->key_offset);
 }
 
 
@@ -143,7 +157,7 @@ static t_avl_node *avl_node_ins(t_avl_tree *t, t_avl_node *h, void *d, t_avl_nod
       old = NULL;
       return x;
    }
-   int res = t->cmp(d, avl_node2str(t, h));
+   int res = t->cmp(avl_str2key(t, d), avl_node2key(t, h));
    if (res < 0)
    {
       h->l = avl_node_ins(t, h->l, d, old);
@@ -168,15 +182,15 @@ static t_avl_node *avl_node_ins(t_avl_tree *t, t_avl_node *h, void *d, t_avl_nod
 /*!
  * Inserts an element to a tree
  *
- * \param t a pointer to a tree
- * \param d a pointer to a structure
+ * \param tree a pointer to a tree
+ * \param data a pointer to a structure
  * \return a pointer to a replaced structure, or NULL when no collision
  */
-void *avl_ins(t_avl_tree *t, void *d)
+void *avl_ins(t_avl_tree *tree, void *data)
 {
    t_avl_node *old = NULL;
-   t->root = avl_node_ins(t, t->root, d, &old);
-   return avl_node2str(t, old);
+   tree->root = avl_node_ins(tree, tree->root, data, &old);
+   return avl_node2str(tree, old);
 }
 
 
@@ -185,21 +199,21 @@ void *avl_ins(t_avl_tree *t, void *d)
  * Look up for an element in a tree
  *
  * \param t a pointer to a tree
- * \param d a pointer to a structure
+ * \param d a pointer to a key
  * \return a pointer to a found structure, or NULL when not found
  */
-void *avl_find(t_avl_tree *t, const void *d)
+void *avl_find(const t_avl_tree *tree, const void *key)
 {
-   t_avl_node *h = t->root;
+   t_avl_node *h = tree->root;
 
    while (h != NULL)
    {
-      int res = t->cmp(d, avl_node2str(t, h));
+      int res = tree->cmp(key, avl_node2key(tree, h));
       if (res == 0)
          break;
       h = res > 0 ? h->r : h->l;
    }
-   return avl_node2str(t, h);
+   return avl_node2str(tree, h);
 }
 
 
@@ -220,9 +234,9 @@ t_avl_node *avl_leftmost(t_avl_node *h)
  * \param t a pointer to a tree
  * \return a pointer to a first structure, or NULL when not found
  */
-void *avl_first(t_avl_tree *t)
+void *avl_first(const t_avl_tree *tree)
 {
-   return avl_node2str(t, avl_leftmost(t->root));
+   return avl_node2str(tree, avl_leftmost(tree->root));
 }
 
 
@@ -248,9 +262,9 @@ t_avl_node *avl_node_next(t_avl_node *h)
  * \param t a pointer to an element
  * \return a pointer to the next structure, or NULL element is the last
  */
-void *avl_next(t_avl_tree *t, void *p)
+void *avl_next(t_avl_tree *tree, void *prev)
 {
-   return avl_node2str(t, avl_node_next(avl_str2node(t, p)));
+   return avl_node2str(tree, avl_node_next(avl_str2node(tree, prev)));
 }
 
 
@@ -267,7 +281,7 @@ static t_avl_node *avl_first_del(t_avl_node *h)
 
 
 
-static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *data, t_avl_node **del)
+static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *key, t_avl_node **del)
 {
    if (head == NULL)
    {
@@ -275,16 +289,16 @@ static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *dat
       return NULL;
    }
 
-   int res = t->cmp(data, avl_node2str(t, head));
+   int res = t->cmp(key, avl_node2key(t, head));
    if (res < 0)
    {
-      head->l = avl_node_del(t, head->l, data, del);
+      head->l = avl_node_del(t, head->l, key, del);
       if (head->l != NULL)
          head->l->p = head;
    }
    else if (res > 0)
    {
-      head->r = avl_node_del(t, head->r, data, del);
+      head->r = avl_node_del(t, head->r, key, del);
       if (head->r != NULL)
          head->r->p = head;
    }
@@ -312,18 +326,18 @@ static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *dat
 
 
 /*!
- * Delete an element in a tree
+ * Delete an element from a tree
  *
- * \param tree a tree to insert
- * \param data a pointer to structure
+ * \param tree a tree to alter
+ * \param data a pointer to key
  * \return a pointer to a deleted structure, or NULL when not found
  */
-void *avl_del(t_avl_tree *t, const void *d)
+void *avl_del(t_avl_tree *tree, const void *key)
 {
    t_avl_node *del = NULL;
-   if ((t->root = avl_node_del(t, t->root, d, &del)) != NULL)
-      t->root->p = NULL;
-   return avl_node2str(t, del);
+   if ((tree->root = avl_node_del(tree, tree->root, key, &del)) != NULL)
+      tree->root->p = NULL;
+   return avl_node2str(tree, del);
 }
 
 
@@ -335,11 +349,12 @@ void *avl_del(t_avl_tree *t, const void *d)
  * \param c parent structure compare function
  * \return an empty initialized tree
  */
-t_avl_tree avl_tree_new(size_t o, t_compare c)
+t_avl_tree avl_tree_new(size_t node_offset, size_t key_offset, t_compare c)
 {
    t_avl_tree tree = {
       .root = NULL,
-      .node_offset = o,
+      .node_offset = node_offset,
+      .key_offset = key_offset,
       .cmp = c,
    };
    return tree;
@@ -357,7 +372,13 @@ void avl_node_apply(const t_avl_tree *t, const t_avl_node *h, void (* apply)(voi
 }
 
 
-void avl_apply(const t_avl_tree *t, void (* apply)(void *))
+/*!
+ * Executes apply function for all tree elements in ascending order
+ *
+ * \param tree a pointer to a tree
+ * \param apply a pointer to a function receiving a pointer to a parent structure
+ */
+void avl_apply(const t_avl_tree *tree, void (* apply)(void *))
 {
-   avl_node_apply(t, t->root, apply);
+   avl_node_apply(tree, tree->root, apply);
 }

@@ -13,14 +13,16 @@ typedef struct t_avl_node {
 typedef struct {
    t_avl_node *root;
    size_t node_offset;
+   size_t key_offset;
    t_compare cmp;
 } t_avl_tree;
 
 void *avl_ins(t_avl_tree *tree, void *data);
-void *avl_find(t_avl_tree *t, const void *d);
-void *avl_first(t_avl_tree *t);
-void *avl_next(t_avl_tree *t, void *p);
-void *avl_del(t_avl_tree *tree, const void *data);
-t_avl_tree avl_tree_new(size_t o, t_compare c);
-void avl_apply(const t_avl_tree *t, void (* apply)(void *));
+void *avl_find(const t_avl_tree *tree, const void *key);
+void *avl_first(const t_avl_tree *t);
+void *avl_next(t_avl_tree *tree, void *prev);
+void *avl_del(t_avl_tree *tree, const void *key);
+t_avl_tree avl_tree_new(size_t node_offset, size_t key_offset, t_compare c);
+void avl_apply(const t_avl_tree *tree, void (* apply)(void *));
+
 #endif //E_AVLTREE_H
