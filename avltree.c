@@ -1,11 +1,38 @@
-/* (c) V.Botov */
+/* 
+ Copyright (c) 2021 Vladimir Botov
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+ */
+
+
+
 #include <stdlib.h>
 #include "avltree.h"
+
+
 
 static int avl_get_h(const t_avl_node *n)
 {
    return n == NULL ? 0 : n->h;
 }
+
+
 
 static void avl_fix_h(t_avl_node *n)
 {
@@ -14,10 +41,28 @@ static void avl_fix_h(t_avl_node *n)
    n->h = (hl > hr ? hl : hr) + 1;
 }
 
+
+
 static int avl_get_b(const t_avl_node *n)
 {
    return avl_get_h(n->r) - avl_get_h(n->l);
 }
+
+
+
+static void *avl_node2str(const t_avl_tree *t, t_avl_node *n)
+{
+   return n == NULL ? NULL : (void *)(((char *)n) - t->node_offset);
+}
+
+
+
+static t_avl_node *avl_str2node(const t_avl_tree *t, void *d)
+{
+   return d == NULL ? NULL : (t_avl_node *)(((char *)d) + t->node_offset);
+}
+
+
 
 static t_avl_node *avl_rot_r(t_avl_node *r)
 {
@@ -68,81 +113,147 @@ static t_avl_node *avl_fix(t_avl_node *node)
 }
 
 
-static t_avl_node *avl_node_ins(t_avl_tree *t, t_avl_node *h, void *d)
+
+static void avl_node_replace(t_avl_node *n, t_avl_node *o)
+{
+   if (n == o)
+      return;
+   *n = *o;
+   if (n->l != NULL)
+      n->l->p = n;
+   if (n->r != NULL)
+      n->r->p = n;
+   if (o->p != NULL)
+      if (o->p->l == o)
+         o->p->l = n;
+      else
+         o->p->r = n;
+   o->p = o->l = o->r = NULL;
+   o->h = 0;
+}
+
+
+
+static t_avl_node *avl_node_ins(t_avl_tree *t, t_avl_node *h, void *d, t_avl_node **old)
 {
    if (h == NULL)
    {
-      t_avl_node *x = t->alloc(sizeof(t_avl_node));
+      t_avl_node *x = avl_str2node(t, d);
       x->l = x->r = x->p = NULL;
-      x->d = (void *)d;
+      old = NULL;
       return x;
    }
-   int res = t->cmp(d, h->d);
+   int res = t->cmp(d, avl_node2str(t, h));
    if (res < 0)
    {
-      h->l = avl_node_ins(t, h->l, d);
+      h->l = avl_node_ins(t, h->l, d, old);
       h->l->p = h;
    }
    else if (res > 0)
    {
-      h->r = avl_node_ins(t, h->r, d);
+      h->r = avl_node_ins(t, h->r, d, old);
       h->r->p = h;
    }
    else
-      h->d = d;
+   {
+      *old = h;
+      h = avl_str2node(t, d);
+      avl_node_replace(h, *old);
+   }
 
    return avl_fix(h);
 }
 
 
-void avl_ins(t_avl_tree *tree, void *data)
+/*!
+ * Inserts an element to a tree
+ *
+ * \param t a pointer to a tree
+ * \param d a pointer to a structure
+ * \return a pointer to a replaced structure, or NULL when no collision
+ */
+void *avl_ins(t_avl_tree *t, void *d)
 {
-   tree->root = avl_node_ins(tree, tree->root, data);
+   t_avl_node *old = NULL;
+   t->root = avl_node_ins(t, t->root, d, &old);
+   return avl_node2str(t, old);
 }
 
 
-static t_avl_node *avl_node_find(t_avl_tree *t, t_avl_node *h, const void *d)
+
+/*!
+ * Look up for an element in a tree
+ *
+ * \param t a pointer to a tree
+ * \param d a pointer to a structure
+ * \return a pointer to a found structure, or NULL when not found
+ */
+void *avl_find(t_avl_tree *t, const void *d)
 {
+   t_avl_node *h = t->root;
+
    while (h != NULL)
    {
-      int res = t->cmp(d, h->d);
+      int res = t->cmp(d, avl_node2str(t, h));
       if (res == 0)
          break;
       h = res > 0 ? h->r : h->l;
    }
+   return avl_node2str(t, h);
+}
+
+
+
+t_avl_node *avl_leftmost(t_avl_node *h)
+{
+   if (h != NULL)
+      for (;h->l != NULL; h = h->l)
+         ;
    return h;
 }
 
-void *avl_find(t_avl_tree *tree, const void *data)
+
+
+/*!
+ * Retrieve a first element in a tree
+ *
+ * \param t a pointer to a tree
+ * \return a pointer to a first structure, or NULL when not found
+ */
+void *avl_first(t_avl_tree *t)
 {
-   t_avl_node *node = avl_node_find(tree, tree->root, data);
-   return node == NULL ? NULL : node->d;
+   return avl_node2str(t, avl_leftmost(t->root));
 }
 
-t_avl_node *avl_first(t_avl_node *h)
-{
-   while (h->l != NULL)
-      h = h->l;
-   return h;
-}
 
-t_avl_node *avl_next(t_avl_node *h)
+
+t_avl_node *avl_node_next(t_avl_node *h)
 {
    if (h == NULL)
       return NULL;
 
    if (h->r != NULL)
-   {
-      h = h->r;
-      while (h->l != NULL)
-         h = h->l;
-      return h;
-   }
+      return avl_leftmost(h->r);
 
    while (h->p != NULL && h == h->p->r)
       h = h->p;
+
    return h->p;
 }
+
+
+/*!
+ * Retrieve the next element in a tree
+ *
+ * \param t a pointer to an element
+ * \return a pointer to the next structure, or NULL element is the last
+ */
+void *avl_next(t_avl_tree *t, void *p)
+{
+   return avl_node2str(t, avl_node_next(avl_str2node(t, p)));
+}
+
+
 
 static t_avl_node *avl_first_del(t_avl_node *h)
 {
@@ -154,20 +265,26 @@ static t_avl_node *avl_first_del(t_avl_node *h)
    return avl_fix(h);
 }
 
-static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *data)
+
+
+static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *data, t_avl_node **del)
 {
    if (head == NULL)
+   {
+      *del = NULL;
       return NULL;
-   int res = t->cmp(data, head->d);
+   }
+
+   int res = t->cmp(data, avl_node2str(t, head));
    if (res < 0)
    {
-      head->l = avl_node_del(t, head->l, data);
+      head->l = avl_node_del(t, head->l, data, del);
       if (head->l != NULL)
          head->l->p = head;
    }
    else if (res > 0)
    {
-      head->r = avl_node_del(t, head->r, data);
+      head->r = avl_node_del(t, head->r, data, del);
       if (head->r != NULL)
          head->r->p = head;
    }
@@ -175,11 +292,12 @@ static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *dat
    {
       t_avl_node *l = head->l;
       t_avl_node *r = head->r;
-      free(head);
+
+      *del = head;
 
       if (r == NULL)
          return l;
-      t_avl_node *f = avl_first(r);
+      t_avl_node *f = avl_leftmost(r);
       f->r = avl_first_del(r);
       if (f->r != NULL)
          f->r->p = f;
@@ -191,19 +309,55 @@ static t_avl_node *avl_node_del(t_avl_tree *t, t_avl_node *head, const void *dat
    return avl_fix(head);
 }
 
-void avl_del(t_avl_tree *tree, const void *data)
+
+
+/*!
+ * Delete an element in a tree
+ *
+ * \param tree a tree to insert
+ * \param data a pointer to structure
+ * \return a pointer to a deleted structure, or NULL when not found
+ */
+void *avl_del(t_avl_tree *t, const void *d)
 {
-   if ((tree->root = avl_node_del(tree, tree->root, data)) != NULL)
-      tree->root->p = NULL;
+   t_avl_node *del = NULL;
+   if ((t->root = avl_node_del(t, t->root, d, &del)) != NULL)
+      t->root->p = NULL;
+   return avl_node2str(t, del);
 }
 
-t_avl_tree avl_tree_new(int (* cmp)(const void *, const void *))
+
+
+/*!
+ * Create an empty tree
+ *
+ * \param o t_avl_node offset in a parent structure
+ * \param c parent structure compare function
+ * \return an empty initialized tree
+ */
+t_avl_tree avl_tree_new(size_t o, t_compare c)
 {
    t_avl_tree tree = {
       .root = NULL,
-      .cmp = cmp,
-      .free = free,
-      .alloc = malloc,
+      .node_offset = o,
+      .cmp = c,
    };
    return tree;
+}
+
+
+
+void avl_node_apply(const t_avl_tree *t, const t_avl_node *h, void (* apply)(void *))
+{
+   if (h == NULL)
+      return;
+   avl_node_apply(t, h->l, apply);
+   apply((void *)avl_node2str(t, (t_avl_node *)h));
+   avl_node_apply(t, h->r, apply);
+}
+
+
+void avl_apply(const t_avl_tree *t, void (* apply)(void *))
+{
+   avl_node_apply(t, t->root, apply);
 }
