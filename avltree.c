@@ -138,12 +138,14 @@ static void avl_node_replace(t_avl_node *n, t_avl_node *o)
    if (n->r != NULL)
       n->r->p = n;
    if (o->p != NULL)
+   {
       if (o->p->l == o)
          o->p->l = n;
       else
          o->p->r = n;
+   }
    o->p = o->l = o->r = NULL;
-   o->h = 0;
+   o->h = 1;
 }
 
 
@@ -154,7 +156,8 @@ static t_avl_node *avl_node_ins(t_avl_tree *t, t_avl_node *h, void *d, t_avl_nod
    {
       t_avl_node *x = avl_str2node(t, d);
       x->l = x->r = x->p = NULL;
-      old = NULL;
+      x->h = 1;
+      *old = NULL;
       return x;
    }
    int res = t->cmp(avl_str2key(t, d), avl_node2key(t, h));
@@ -228,19 +231,6 @@ t_avl_node *avl_leftmost(t_avl_node *h)
 
 
 
-/*!
- * Retrieve a first element in a tree
- *
- * \param t a pointer to a tree
- * \return a pointer to a first structure, or NULL when not found
- */
-void *avl_first(const t_avl_tree *tree)
-{
-   return avl_node2str(tree, avl_leftmost(tree->root));
-}
-
-
-
 t_avl_node *avl_node_next(t_avl_node *h)
 {
    if (h == NULL)
@@ -256,13 +246,58 @@ t_avl_node *avl_node_next(t_avl_node *h)
 }
 
 
+
+/*!
+ * Look up for an element in a tree. In case of non-direct matching, returns a first
+ * node, which greater than a key
+ *
+ * \param t a pointer to a tree
+ * \param d a pointer to a key
+ * \return a pointer to a found structure, or NULL when not found
+ */
+void *avl_find_right(const t_avl_tree *tree, const void *key)
+{
+   int res;
+   t_avl_node *h = tree->root;
+   t_avl_node *p = h;
+
+   while (h != NULL)
+   {
+      res = tree->cmp(key, avl_node2key(tree, h));
+      if (res == 0)
+         break;
+      p = h;
+      h = res > 0 ? h->r : h->l;
+   }
+   if (h == NULL)
+      h = res < 0 ? p : avl_node_next(p);
+
+   return avl_node2str(tree, h);
+}
+
+
+
+/*!
+ * Retrieve a first element in a tree
+ *
+ * \param tree AVL tree
+ * \return a pointer to a first structure, or NULL when not found
+ */
+void *avl_first(const t_avl_tree *tree)
+{
+   return avl_node2str(tree, avl_leftmost(tree->root));
+}
+
+
+
 /*!
  * Retrieve the next element in a tree
  *
- * \param t a pointer to an element
+ * \param tree AVL tree
+ * \param prev previous element
  * \return a pointer to the next structure, or NULL element is the last
  */
-void *avl_next(t_avl_tree *tree, void *prev)
+void *avl_next(const t_avl_tree *tree, void *prev)
 {
    return avl_node2str(tree, avl_node_next(avl_str2node(tree, prev)));
 }
@@ -367,8 +402,9 @@ void avl_node_apply(const t_avl_tree *t, const t_avl_node *h, void (* apply)(voi
    if (h == NULL)
       return;
    avl_node_apply(t, h->l, apply);
+   t_avl_node *r = h->r; /* to avoid a situation when 'apply' deallocates h */
    apply((void *)avl_node2str(t, (t_avl_node *)h));
-   avl_node_apply(t, h->r, apply);
+   avl_node_apply(t, r, apply);
 }
 
 
